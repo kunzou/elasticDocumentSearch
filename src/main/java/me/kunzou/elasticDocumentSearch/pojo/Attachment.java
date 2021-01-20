@@ -16,4 +16,7 @@ public class Attachment {
   private String contentType;
   private ZonedDateTime date;
   private String language;
+  private String author;
+  private String title;
+  private String keywords;
 }

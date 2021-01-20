@@ -16,4 +16,5 @@ public class Document {
   private String size;
   private List<String> highlights;
   private Float score;
+  private String author;
 }

@@ -159,9 +159,13 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     return searchData("", false);
   }
 
-  private QueryBuilder createQueryBuilder(String keyword, boolean fuzzy) {
+  private QueryBuilder createQueryBuilder(String keyword, String field, boolean fuzzy) {
+    if(StringUtils.isEmpty(keyword)) {
+      return null;
+    }
+
     if (fuzzy) {
-      return new MatchQueryBuilder(attachmentField, keyword)
+      return new MatchQueryBuilder(field, keyword)
         .fuzziness(Fuzziness.AUTO)
         .prefixLength(0)
         .maxExpansions(50);
@@ -172,36 +176,21 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
   }
 
   private SearchResponse searchByKeyword(String keyword, boolean fuzzy) throws IOException {
-    QueryBuilder queryBuilder = null;
-    if (StringUtils.isNotBlank(keyword)) {
-      queryBuilder = createQueryBuilder(keyword, fuzzy);
-    }
-
     SearchRequest searchRequest = new SearchRequest(index);
-    SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-    searchSourceBuilder.query(queryBuilder);
-    searchSourceBuilder.sort(new ScoreSortBuilder().order(SortOrder.DESC));
-    searchSourceBuilder.sort(new FieldSortBuilder("createTime").order(SortOrder.ASC));
+    SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
+      .query(createQueryBuilder(keyword, attachmentField, fuzzy))
+      .sort(new ScoreSortBuilder().order(SortOrder.DESC))
+      .sort(new FieldSortBuilder("createTime").order(SortOrder.ASC));
 
-    HighlightBuilder highlightBuilder = new HighlightBuilder();
-/*    HighlightBuilder.Field highlightTitle = new HighlightBuilder.Field("attachment.content");
-    highlightTitle.highlighterType("unified");
-    highlightBuilder.field(highlightTitle);*/
-    HighlightBuilder.Field highlightUser = new HighlightBuilder.Field(attachmentField);
-    highlightBuilder.field(highlightUser);
+    HighlightBuilder highlightBuilder = new HighlightBuilder()
+      .field(new HighlightBuilder.Field(attachmentField));
+
     searchSourceBuilder.highlighter(highlightBuilder);
 
     searchRequest.source(searchSourceBuilder);
 
     return client.search(searchRequest,RequestOptions.DEFAULT);
   }
-
-/*  SuggestBuilder createSuggestBuilder() {
-    SuggestionBuilder termSuggestionBuilder = SuggestBuilders.termSuggestion("attachment.content").text(keyword);
-    SuggestBuilder suggestBuilder = new SuggestBuilder();
-    suggestBuilder.addSuggestion("suggest_user", termSuggestionBuilder);
-    searchSourceBuilder.suggest(suggestBuilder);
-  }*/
 
   private ElasticSearchResult parseSearchResult(String source) throws IOException {
     ObjectMapper mapper = new ObjectMapper();
@@ -219,6 +208,8 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     document.setId(elasticSearchResult.getId());
     document.setScore(elasticSearchResult.getScore());
     document.setHighlights(elasticSearchResult.getHighlightFields());
+    document.setTitle(elasticSearchResult.getAttachment().getTitle());
+    document.setAuthor(elasticSearchResult.getAttachment().getAuthor());
     return document;
   }
 
