@@ -1,12 +1,12 @@
 package me.kunzou.elasticDocumentSearch.dto;
 
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.List;
-
 @Setter
 @Getter
+@EqualsAndHashCode
 public class Document {
   private String id;
   private String fileName;
@@ -14,9 +14,5 @@ public class Document {
   private String content;
   private String title;
   private String size;
-  private List<String> contentHighlights;
-  private List<String> titleHighlights;
-  private List<String> keywordsHighlights;
-  private Float score;
   private String author;
 }

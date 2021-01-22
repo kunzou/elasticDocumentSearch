@@ -1,6 +1,7 @@
 package me.kunzou.elasticDocumentSearch.controller;
 
 import me.kunzou.elasticDocumentSearch.dto.Document;
+import me.kunzou.elasticDocumentSearch.dto.SearchResult;
 import me.kunzou.elasticDocumentSearch.service.ElasticSearchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,8 +32,8 @@ public class Controller {
   }
 
   @GetMapping(value = "/search/{keyword}")
-  public ResponseEntity<List<Document>> search(@PathVariable("keyword") String keyword) throws IOException {
-    return ResponseEntity.ok().body(elasticSearchService.searchDataMultipleFields(keyword));
+  public ResponseEntity<List<SearchResult>> search(@PathVariable("keyword") String keyword) throws IOException {
+    return ResponseEntity.ok().body(elasticSearchService.searchData(keyword));
   }
 
   @GetMapping(value = "/documents")

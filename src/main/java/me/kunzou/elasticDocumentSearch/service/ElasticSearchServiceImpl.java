@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import me.kunzou.elasticDocumentSearch.dto.Document;
+import me.kunzou.elasticDocumentSearch.dto.SearchResult;
 import me.kunzou.elasticDocumentSearch.pojo.ElasticSearchResult;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.io.FileUtils;
@@ -41,6 +42,7 @@ import javax.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class ElasticSearchServiceImpl implements ElasticSearchService {
@@ -124,49 +126,21 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     IndexRequest indexRequest = new IndexRequest(index);
     indexRequest.setPipeline(pipelineId);
 
-    Map<String, Object> map = new HashMap();
+    Map<String, Object> map = new HashMap<>();
     map.put(pipelineField, Base64.encodeBase64String(file.getBytes()));
     map.put("createTime", new Date());
     map.put("filename", file.getOriginalFilename());
 
     indexRequest.source(map);
-    return client.index(indexRequest, RequestOptions.DEFAULT);
+    final IndexResponse index = client.index(indexRequest, RequestOptions.DEFAULT);
+    return index;
   }
 
   @Override
-  public List<Document> searchData(String keyword, boolean fuzzy, int size) throws IOException {
-    SearchResponse response = searchByKeyword(keyword, fuzzy, size);
-
-    SearchHits hits = response.getHits();
-    SearchHit[] searchHists = hits.getHits();
-    List<Document> results = new ArrayList<>();
-
-    for (SearchHit hit : searchHists) {
-      ElasticSearchResult elasticSearchResult = parseSearchResult(hit.getSourceAsString());
-      elasticSearchResult.setId(hit.getId());
-      elasticSearchResult.setScore(hit.getScore());
-
-      if(hit.getHighlightFields().get(contentField) != null) {
-        for(Text fragment : hit.getHighlightFields().get(contentField).getFragments()) {
-          elasticSearchResult.getHighlightFields().add(fragment.toString());
-
-          elasticSearchResult.getHighlightFieldsMap().computeIfAbsent(contentField, key->new ArrayList<>());
-          elasticSearchResult.getHighlightFieldsMap().get(contentField).add(fragment.toString());
-        }
-      }
-
-      results.add(createDocument(elasticSearchResult));
-    }
-
-    return results;
-  }
-
-  @Override
-  public List<Document> searchDataMultipleFields(String keyword) throws IOException {
+  public List<SearchResult> searchData(String keyword) throws IOException {
     MultiSearchResponse multiResponse = multiSearch(keyword);
 
-    List<Document> results = new ArrayList<>();
-
+    Map<String, SearchResult> map = new HashMap<>();
 
     for(MultiSearchResponse.Item item : multiResponse.getResponses()) {
       SearchResponse response = item.getResponse();
@@ -174,32 +148,56 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
       SearchHit[] searchHists = hits.getHits();
 
       for (SearchHit hit : searchHists) {
-        ElasticSearchResult elasticSearchResult = parseSearchResult(hit.getSourceAsString());
-        elasticSearchResult.setId(hit.getId());
-        elasticSearchResult.setScore(hit.getScore());
-        addHighlightField(elasticSearchResult, contentField, hit);
-        addHighlightField(elasticSearchResult, titleField, hit);
-        addHighlightField(elasticSearchResult, keywordsField, hit);
-        results.add(createDocument(elasticSearchResult));
+        map.merge(hit.getId(), createSearchResult(hit), this::mergeSearchResult);
       }
     }
 
-    return results;
+    return map.values().stream()
+      .sorted(Comparator.comparing(SearchResult::getScore, Comparator.reverseOrder()))
+      .collect(Collectors.toList());
   }
 
-  private void addHighlightField(ElasticSearchResult elasticSearchResult, String field, SearchHit hit) {
-    if(hit.getHighlightFields().get(field) != null) {
-      for(Text fragment : hit.getHighlightFields().get(field).getFragments()) {
-        elasticSearchResult.getHighlightFields().add(fragment.toString());
-        elasticSearchResult.getHighlightFieldsMap().computeIfAbsent(field, key->new ArrayList<>());
-        elasticSearchResult.getHighlightFieldsMap().get(field).add(fragment.toString());
-      }
+  SearchResult createSearchResult(SearchHit hit) {
+    SearchResult searchResult = new SearchResult();
+    ElasticSearchResult elasticSearchResult = parseSearchResult(hit.getSourceAsString());
+    searchResult.setFileName(elasticSearchResult.getFilename());
+    searchResult.setScore(hit.getScore());
+
+    if(hit.getHighlightFields().get(contentField) != null) {
+      Arrays.stream(hit.getHighlightFields().get(contentField).getFragments()).forEach(fragment->searchResult.getContentHighlights().add(fragment.toString()));
     }
+    if(hit.getHighlightFields().get(titleField) != null) {
+      Arrays.stream(hit.getHighlightFields().get(titleField).getFragments()).forEach(fragment->searchResult.getTitleHighlights().add(fragment.toString()));
+    }
+    if(hit.getHighlightFields().get(keywordsField) != null) {
+      Arrays.stream(hit.getHighlightFields().get(keywordsField).getFragments()).forEach(fragment->searchResult.getKeywordsHighlights().add(fragment.toString()));
+    }
+
+    return searchResult;
+  }
+
+  SearchResult mergeSearchResult(SearchResult oldValue, SearchResult newValue) {
+    oldValue.setScore(oldValue.getScore()+newValue.getScore());
+    oldValue.getKeywordsHighlights().addAll(newValue.getKeywordsHighlights());
+    oldValue.getTitleHighlights().addAll(newValue.getTitleHighlights());
+    oldValue.getContentHighlights().addAll(newValue.getContentHighlights());
+    return oldValue;
   }
 
   @Override
   public List<Document> getAllDocuments() throws IOException {
-    return searchData("", false, 1000);
+    SearchResponse response = searchByKeyword();
+
+    SearchHits hits = response.getHits();
+    SearchHit[] searchHists = hits.getHits();
+    List<Document> results = new ArrayList<>();
+
+    for (SearchHit hit : searchHists) {
+      ElasticSearchResult elasticSearchResult = parseSearchResult(hit.getSourceAsString());
+      results.add(createDocument(elasticSearchResult, hit.getId()));
+    }
+
+    return results;
   }
 
   private QueryBuilder createQueryBuilder(String keyword, String field, boolean fuzzy) {
@@ -218,21 +216,14 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     }
   }
 
-  private SearchResponse searchByKeyword(String keyword, boolean fuzzy, int size) throws IOException {
-    SearchRequest searchRequest = new SearchRequest(index);
+  private SearchResponse searchByKeyword() throws IOException {
     SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
-      .query(createQueryBuilder(keyword, contentField, fuzzy))
-      .size(size)
+      .query(createQueryBuilder("", contentField, false))
+      .size(1000)
       .sort(new ScoreSortBuilder().order(SortOrder.DESC))
       .sort(new FieldSortBuilder("createTime").order(SortOrder.ASC));
 
-    HighlightBuilder highlightBuilder = new HighlightBuilder()
-      .field(new HighlightBuilder.Field(contentField));
-
-    searchSourceBuilder.highlighter(highlightBuilder);
-
-    searchRequest.source(searchSourceBuilder);
-
+    SearchRequest searchRequest = new SearchRequest(index).source(searchSourceBuilder);
 
     return client.search(searchRequest,RequestOptions.DEFAULT);
   }
@@ -256,24 +247,25 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     return client.msearch(request,RequestOptions.DEFAULT);
   }
 
-  private ElasticSearchResult parseSearchResult(String source) throws IOException {
+  private ElasticSearchResult parseSearchResult(String source) {
+    ElasticSearchResult elasticSearchResult = null;
     ObjectMapper mapper = new ObjectMapper();
     mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     mapper.registerModule(new JavaTimeModule());
-    return mapper.readValue(source, ElasticSearchResult.class);
+    try {
+      elasticSearchResult = mapper.readValue(source, ElasticSearchResult.class);
+    } catch (IOException ignored) {}
+    return elasticSearchResult;
   }
 
-  private Document createDocument(ElasticSearchResult elasticSearchResult) {
+  private Document createDocument(ElasticSearchResult elasticSearchResult, String id) {
     Document document = new Document();
     document.setFileName(elasticSearchResult.getFilename());
     document.setContent(elasticSearchResult.getAttachment().getContent());
     document.setFileType(elasticSearchResult.getAttachment().getContentType());
     document.setSize(FileUtils.byteCountToDisplaySize(elasticSearchResult.getAttachment().getContentLength()));
-    document.setId(elasticSearchResult.getId());
-    document.setScore(elasticSearchResult.getScore());
-    document.setContentHighlights(elasticSearchResult.getHighlightFieldsMap().get(contentField));
-    document.setTitleHighlights(elasticSearchResult.getHighlightFieldsMap().get(titleField));
-    document.setKeywordsHighlights(elasticSearchResult.getHighlightFieldsMap().get(keywordsField));
+    document.setId(id);
+
     document.setTitle(elasticSearchResult.getAttachment().getTitle());
     document.setAuthor(elasticSearchResult.getAttachment().getAuthor());
 
