@@ -13,6 +13,8 @@ import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.ingest.GetPipelineRequest;
 import org.elasticsearch.action.ingest.PutPipelineRequest;
+import org.elasticsearch.action.search.MultiSearchRequest;
+import org.elasticsearch.action.search.MultiSearchResponse;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
@@ -49,7 +51,9 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
   @Value("${config.type}") private String type;
   @Value("${config.pipelineId}") private String pipelineId;
   @Value("${config.pipelineField}")  private String pipelineField;
-  @Value("${config.attachmentField}") private String attachmentField;
+  @Value("${config.contentField}") private String contentField;
+  @Value("${config.titleField}") private String titleField;
+  @Value("${config.keywordsField}") private String keywordsField;
 
   private RestHighLevelClient client;
 
@@ -130,8 +134,8 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
   }
 
   @Override
-  public List<Document> searchData(String keyword, boolean fuzzy) throws IOException {
-    SearchResponse response = searchByKeyword(keyword, fuzzy);
+  public List<Document> searchData(String keyword, boolean fuzzy, int size) throws IOException {
+    SearchResponse response = searchByKeyword(keyword, fuzzy, size);
 
     SearchHits hits = response.getHits();
     SearchHit[] searchHists = hits.getHits();
@@ -142,9 +146,12 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
       elasticSearchResult.setId(hit.getId());
       elasticSearchResult.setScore(hit.getScore());
 
-      if(hit.getHighlightFields().get(attachmentField) != null) {
-        for(Text fragment : hit.getHighlightFields().get(attachmentField).getFragments()) {
+      if(hit.getHighlightFields().get(contentField) != null) {
+        for(Text fragment : hit.getHighlightFields().get(contentField).getFragments()) {
           elasticSearchResult.getHighlightFields().add(fragment.toString());
+
+          elasticSearchResult.getHighlightFieldsMap().computeIfAbsent(contentField, key->new ArrayList<>());
+          elasticSearchResult.getHighlightFieldsMap().get(contentField).add(fragment.toString());
         }
       }
 
@@ -155,8 +162,44 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
   }
 
   @Override
+  public List<Document> searchDataMultipleFields(String keyword) throws IOException {
+    MultiSearchResponse multiResponse = multiSearch(keyword);
+
+    List<Document> results = new ArrayList<>();
+
+
+    for(MultiSearchResponse.Item item : multiResponse.getResponses()) {
+      SearchResponse response = item.getResponse();
+      SearchHits hits = response.getHits();
+      SearchHit[] searchHists = hits.getHits();
+
+      for (SearchHit hit : searchHists) {
+        ElasticSearchResult elasticSearchResult = parseSearchResult(hit.getSourceAsString());
+        elasticSearchResult.setId(hit.getId());
+        elasticSearchResult.setScore(hit.getScore());
+        addHighlightField(elasticSearchResult, contentField, hit);
+        addHighlightField(elasticSearchResult, titleField, hit);
+        addHighlightField(elasticSearchResult, keywordsField, hit);
+        results.add(createDocument(elasticSearchResult));
+      }
+    }
+
+    return results;
+  }
+
+  private void addHighlightField(ElasticSearchResult elasticSearchResult, String field, SearchHit hit) {
+    if(hit.getHighlightFields().get(field) != null) {
+      for(Text fragment : hit.getHighlightFields().get(field).getFragments()) {
+        elasticSearchResult.getHighlightFields().add(fragment.toString());
+        elasticSearchResult.getHighlightFieldsMap().computeIfAbsent(field, key->new ArrayList<>());
+        elasticSearchResult.getHighlightFieldsMap().get(field).add(fragment.toString());
+      }
+    }
+  }
+
+  @Override
   public List<Document> getAllDocuments() throws IOException {
-    return searchData("", false);
+    return searchData("", false, 1000);
   }
 
   private QueryBuilder createQueryBuilder(String keyword, String field, boolean fuzzy) {
@@ -171,25 +214,46 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
         .maxExpansions(50);
     }
     else {
-      return QueryBuilders.matchPhraseQuery(attachmentField, keyword);
+      return QueryBuilders.matchPhraseQuery(contentField, keyword);
     }
   }
 
-  private SearchResponse searchByKeyword(String keyword, boolean fuzzy) throws IOException {
+  private SearchResponse searchByKeyword(String keyword, boolean fuzzy, int size) throws IOException {
     SearchRequest searchRequest = new SearchRequest(index);
     SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
-      .query(createQueryBuilder(keyword, attachmentField, fuzzy))
+      .query(createQueryBuilder(keyword, contentField, fuzzy))
+      .size(size)
       .sort(new ScoreSortBuilder().order(SortOrder.DESC))
       .sort(new FieldSortBuilder("createTime").order(SortOrder.ASC));
 
     HighlightBuilder highlightBuilder = new HighlightBuilder()
-      .field(new HighlightBuilder.Field(attachmentField));
+      .field(new HighlightBuilder.Field(contentField));
 
     searchSourceBuilder.highlighter(highlightBuilder);
 
     searchRequest.source(searchSourceBuilder);
 
+
     return client.search(searchRequest,RequestOptions.DEFAULT);
+  }
+
+  private SearchRequest createSearchRequest(String keyword, String field) {
+    SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder()
+      .query(createQueryBuilder(keyword, field, true))
+      .size(10)
+      .sort(new ScoreSortBuilder().order(SortOrder.DESC))
+      .sort(new FieldSortBuilder("createTime").order(SortOrder.ASC))
+      .highlighter(new HighlightBuilder().field(new HighlightBuilder.Field(field)));
+
+    return new SearchRequest().source(searchSourceBuilder);
+  }
+
+  private MultiSearchResponse multiSearch(String keyword) throws IOException {
+    MultiSearchRequest request = new MultiSearchRequest()
+      .add(createSearchRequest(keyword, contentField))
+      .add(createSearchRequest(keyword, titleField))
+      .add(createSearchRequest(keyword, keywordsField));
+    return client.msearch(request,RequestOptions.DEFAULT);
   }
 
   private ElasticSearchResult parseSearchResult(String source) throws IOException {
@@ -207,9 +271,12 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     document.setSize(FileUtils.byteCountToDisplaySize(elasticSearchResult.getAttachment().getContentLength()));
     document.setId(elasticSearchResult.getId());
     document.setScore(elasticSearchResult.getScore());
-    document.setHighlights(elasticSearchResult.getHighlightFields());
+    document.setContentHighlights(elasticSearchResult.getHighlightFieldsMap().get(contentField));
+    document.setTitleHighlights(elasticSearchResult.getHighlightFieldsMap().get(titleField));
+    document.setKeywordsHighlights(elasticSearchResult.getHighlightFieldsMap().get(keywordsField));
     document.setTitle(elasticSearchResult.getAttachment().getTitle());
     document.setAuthor(elasticSearchResult.getAttachment().getAuthor());
+
     return document;
   }
 

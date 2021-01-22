@@ -14,7 +14,9 @@ public class Document {
   private String content;
   private String title;
   private String size;
-  private List<String> highlights;
+  private List<String> contentHighlights;
+  private List<String> titleHighlights;
+  private List<String> keywordsHighlights;
   private Float score;
   private String author;
 }

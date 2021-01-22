@@ -32,7 +32,7 @@ public class Controller {
 
   @GetMapping(value = "/search/{keyword}")
   public ResponseEntity<List<Document>> search(@PathVariable("keyword") String keyword) throws IOException {
-    return ResponseEntity.ok().body(elasticSearchService.searchData(keyword, true));
+    return ResponseEntity.ok().body(elasticSearchService.searchDataMultipleFields(keyword));
   }
 
   @GetMapping(value = "/documents")

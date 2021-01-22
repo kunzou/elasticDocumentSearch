@@ -9,7 +9,8 @@ import java.util.List;
 
 public interface ElasticSearchService {
   IndexResponse addDataByMap(MultipartFile file) throws IOException;
-  List<Document> searchData(String keyword, boolean fuzzy) throws IOException;
+  List<Document> searchData(String keyword, boolean fuzzy, int size) throws IOException;
   List<Document> getAllDocuments() throws IOException;
   void delete(String id) throws IOException;
+  List<Document> searchDataMultipleFields(String keyword) throws IOException;
 }
