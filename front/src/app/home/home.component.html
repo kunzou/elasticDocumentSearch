@@ -1,0 +1,46 @@
+<div class="container">
+    <form (submit)="search()">
+        <div class="input-group mt-3">
+            <input type="text" class="form-control" placeholder="Search.." aria-describedby="searchButton"
+                [(ngModel)]="searchText" name="searchText">
+            <button class="btn btn-dark" type="submit" id="searchButton" (click)="search()">Search</button>
+        </div>
+    </form>
+    <table class="table table-striped table-hover mt-3" *ngIf="results != null">
+        <thead>
+            <tr>
+                <th width="20%" scope="col">File Name</th>
+                <th width="10%" scope="col">Score</th>
+                <th width="50%" scope="col">Content Match</th>
+                <th width="50%" scope="col">Title Match</th>
+                <th width="50%" scope="col">Keywords Match</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr
+                *ngFor="let result of results | slice: (page-1) * pageSize : (page-1) * pageSize + pageSize ; index as i ">
+                <th>{{result.fileName}}</th>
+                <th>{{result.score}}</th>
+                <th>
+                    <div *ngFor="let fragment of result.contentHighlights index as i">
+                        <div innerHTML="[{{i+1}}] {{fragment}}"></div>
+                    </div>
+                </th>
+                <th>
+                    <div *ngFor="let fragment of result.titleHighlights index as i">
+                        <div innerHTML="[{{i+1}}] {{fragment}}"></div>
+                    </div>
+                </th>
+                <th>
+                    <div *ngFor="let fragment of result.keywordsHighlights index as i">
+                        <div innerHTML="[{{i+1}}] {{fragment}}"></div>
+                    </div>
+                </th>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="d-flex justify-content-between p-2" *ngIf="results != null">
+        <ngb-pagination [(page)]="page" [pageSize]="pageSize" [collectionSize]="results.length"></ngb-pagination>
+    </div>
+</div>

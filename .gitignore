@@ -37,3 +37,4 @@ build/
 /front/node_modules/
 /front/e2e/
 /front/dist/
+/src/main/resources/static/*

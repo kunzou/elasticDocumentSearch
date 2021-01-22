@@ -1,0 +1,15 @@
+
+  a {
+    cursor: pointer
+  }
+  
+  ngb-pagination ::ng-deep ul > li:not(.active) > a {
+    background-color: #eeeeee !important;
+    border: none !important;
+    
+  }
+  
+  ngb-pagination ::ng-deep ul > li.active > a {
+    background-color: #dfa974 !important;
+    border: none !important;
+  }
