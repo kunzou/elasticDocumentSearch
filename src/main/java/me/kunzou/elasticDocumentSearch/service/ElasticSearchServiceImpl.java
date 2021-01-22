@@ -10,6 +10,8 @@ import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.elasticsearch.action.delete.DeleteRequest;
+import org.elasticsearch.action.get.GetRequest;
+import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.ingest.GetPipelineRequest;
@@ -122,7 +124,7 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
   }
 
   @Override
-  public IndexResponse addDataByMap(MultipartFile file) throws IOException {
+  public Document addDataByMap(MultipartFile file) throws IOException {
     IndexRequest indexRequest = new IndexRequest(index);
     indexRequest.setPipeline(pipelineId);
 
@@ -132,8 +134,14 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     map.put("filename", file.getOriginalFilename());
 
     indexRequest.source(map);
-    final IndexResponse index = client.index(indexRequest, RequestOptions.DEFAULT);
-    return index;
+    return getDocument(client.index(indexRequest, RequestOptions.DEFAULT).getId());
+  }
+
+  private Document getDocument(String id) throws IOException {
+    GetRequest getRequest = new GetRequest(index, id);
+    GetResponse getResponse = client.get(getRequest, RequestOptions.DEFAULT);
+    ElasticSearchResult elasticSearchResult = parseSearchResult(getResponse.getSourceAsString());
+    return createDocument(elasticSearchResult, getResponse.getId());
   }
 
   @Override
@@ -157,7 +165,7 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
       .collect(Collectors.toList());
   }
 
-  SearchResult createSearchResult(SearchHit hit) {
+  SearchResult createSearchResult(SearchHit hit) throws IOException {
     SearchResult searchResult = new SearchResult();
     ElasticSearchResult elasticSearchResult = parseSearchResult(hit.getSourceAsString());
     searchResult.setFileName(elasticSearchResult.getFilename());
@@ -247,21 +255,20 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     return client.msearch(request,RequestOptions.DEFAULT);
   }
 
-  private ElasticSearchResult parseSearchResult(String source) {
+  private ElasticSearchResult parseSearchResult(String source) throws IOException {
     ElasticSearchResult elasticSearchResult = null;
     ObjectMapper mapper = new ObjectMapper();
     mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     mapper.registerModule(new JavaTimeModule());
-    try {
-      elasticSearchResult = mapper.readValue(source, ElasticSearchResult.class);
-    } catch (IOException ignored) {}
+    elasticSearchResult = mapper.readValue(source, ElasticSearchResult.class);
+
     return elasticSearchResult;
   }
 
   private Document createDocument(ElasticSearchResult elasticSearchResult, String id) {
     Document document = new Document();
     document.setFileName(elasticSearchResult.getFilename());
-    document.setContent(elasticSearchResult.getAttachment().getContent());
+//    document.setContent(elasticSearchResult.getAttachment().getContent());
     document.setFileType(elasticSearchResult.getAttachment().getContentType());
     document.setSize(FileUtils.byteCountToDisplaySize(elasticSearchResult.getAttachment().getContentLength()));
     document.setId(id);

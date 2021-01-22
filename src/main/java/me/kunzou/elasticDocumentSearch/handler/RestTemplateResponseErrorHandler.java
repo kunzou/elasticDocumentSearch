@@ -28,7 +28,7 @@ public class RestTemplateResponseErrorHandler extends ResponseEntityExceptionHan
     logger.error(ex.getMessage(), ex);
     ErrorResponse error = new ErrorResponse();
     error.setTimestamp(LocalDateTime.now());
-    error.setMessage("Unexpected error occurred. Please contact administrator if this issue persists");
+    error.setMessage(ex.getCause().getMessage());
     error.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
 
     return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);

@@ -23,12 +23,12 @@ public class Controller {
   }
 
   @PostMapping(value = "/upload")
-  public ResponseEntity attachmentUpload(@RequestParam("file") MultipartFile file) throws Exception {
+  public ResponseEntity<Document> attachmentUpload(@RequestParam("file") MultipartFile file) throws Exception {
     if (file.isEmpty()) {
       return new ResponseEntity(HttpStatus.BAD_REQUEST);
     }
-    elasticSearchService.addDataByMap(file);
-    return new ResponseEntity(HttpStatus.OK);
+    ;
+    return ResponseEntity.ok().body(elasticSearchService.addDataByMap(file));
   }
 
   @GetMapping(value = "/search/{keyword}")

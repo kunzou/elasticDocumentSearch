@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.util.List;
 
 public interface ElasticSearchService {
-  IndexResponse addDataByMap(MultipartFile file) throws IOException;
+  Document addDataByMap(MultipartFile file) throws IOException;
   List<Document> getAllDocuments() throws IOException;
   void delete(String id) throws IOException;
   List<SearchResult> searchData(String keyword) throws IOException;
