@@ -3,7 +3,10 @@ package me.kunzou.elasticDocumentSearch.controller;
 import me.kunzou.elasticDocumentSearch.dto.Document;
 import me.kunzou.elasticDocumentSearch.dto.SearchResult;
 import me.kunzou.elasticDocumentSearch.service.ElasticSearchService;
+import me.kunzou.elasticDocumentSearch.service.FileService;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -17,9 +20,11 @@ import java.util.List;
 public class Controller {
 
   private ElasticSearchService elasticSearchService;
+  private FileService fileService;
 
-  public Controller(ElasticSearchService elasticSearchService) {
+  public Controller(ElasticSearchService elasticSearchService, FileService fileService) {
     this.elasticSearchService = elasticSearchService;
+    this.fileService = fileService;
   }
 
   @PostMapping(value = "/upload")
@@ -27,7 +32,9 @@ public class Controller {
     if (file.isEmpty()) {
       return new ResponseEntity(HttpStatus.BAD_REQUEST);
     }
-    ;
+
+    Document document = elasticSearchService.addDataByMap(file);
+    fileService.writeFile(file, document.getId());
     return ResponseEntity.ok().body(elasticSearchService.addDataByMap(file));
   }
 
@@ -46,4 +53,18 @@ public class Controller {
     elasticSearchService.delete(id);
     return new ResponseEntity(HttpStatus.OK);
   }
+
+  @GetMapping(value = "/download/{id}")
+  public ResponseEntity<byte[]> getAllDocuments(@PathVariable("id") String id) throws IOException {
+    Document document = elasticSearchService.getDocument(id);
+    byte[] bytes = fileService.download(document);
+
+    HttpHeaders respHeaders = new HttpHeaders();
+    respHeaders.setContentType(new MediaType("text", "json"));
+    respHeaders.setCacheControl("must-revalidate, post-check=0, pre-check=0");
+    respHeaders.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + document.getFileName());
+
+    return new ResponseEntity<>(bytes, respHeaders, HttpStatus.OK);
+  }
+
 }

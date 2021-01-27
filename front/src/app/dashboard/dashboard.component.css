@@ -1,7 +1,3 @@
-
-  a {
-    cursor: pointer
-  }
   
   ngb-pagination ::ng-deep ul > li:not(.active) > a {
     background-color: #eeeeee !important;

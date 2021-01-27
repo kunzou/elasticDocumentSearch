@@ -13,4 +13,5 @@ public interface ElasticSearchService {
   List<Document> getAllDocuments() throws IOException;
   void delete(String id) throws IOException;
   List<SearchResult> searchData(String keyword) throws IOException;
+  Document getDocument(String id) throws IOException;
 }

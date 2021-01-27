@@ -2,6 +2,8 @@ import { Component, OnInit } from '@angular/core';
 import { SearchService } from '../search.service';
 import { trigger, state, style, transition, animate } from '@angular/animations';
 import { SearchResult } from '../domain/searchResult';
+import { DocumentService } from '../document.service';
+import { saveAs } from 'file-saver';
 
 @Component({
   selector: 'app-home',
@@ -27,6 +29,7 @@ export class HomeComponent implements OnInit {
 
   constructor(
     private searchService: SearchService,
+    private documentService: DocumentService
   ) { }
 
   ngOnInit() {
@@ -45,4 +48,13 @@ export class HomeComponent implements OnInit {
   toggleFold(index){
     this.folded[index] = this.folded[index] === 'open' ? 'closed' : 'open';
   }   
+
+  download(id) {
+    this.documentService.download(id).subscribe({
+      next: downloadedFile => {
+        saveAs(downloadedFile);
+      }
+    });
+  }
+
 }

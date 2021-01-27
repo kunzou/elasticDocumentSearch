@@ -26,6 +26,7 @@
     "angular-font-awesome": "^3.1.2",
     "auth0-js": "^9.13.2",
     "bootstrap": "^4.5.0",
+    "file-saver": "^2.0.5",
     "font-awesome": "^4.7.0",
     "jquery": "^3.5.1",
     "ngx-lightbox": "^2.0.0",

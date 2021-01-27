@@ -137,7 +137,8 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
     return getDocument(client.index(indexRequest, RequestOptions.DEFAULT).getId());
   }
 
-  private Document getDocument(String id) throws IOException {
+  @Override
+  public Document getDocument(String id) throws IOException {
     GetRequest getRequest = new GetRequest(index, id);
     GetResponse getResponse = client.get(getRequest, RequestOptions.DEFAULT);
     ElasticSearchResult elasticSearchResult = parseSearchResult(getResponse.getSourceAsString());
@@ -168,6 +169,7 @@ public class ElasticSearchServiceImpl implements ElasticSearchService {
   SearchResult createSearchResult(SearchHit hit) throws IOException {
     SearchResult searchResult = new SearchResult();
     ElasticSearchResult elasticSearchResult = parseSearchResult(hit.getSourceAsString());
+    searchResult.setId(hit.getId());
     searchResult.setFileName(elasticSearchResult.getFilename());
     searchResult.setScore(hit.getScore());
 

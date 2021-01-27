@@ -11,6 +11,7 @@ import java.util.List;
 @Setter
 @EqualsAndHashCode
 public class SearchResult {
+  private String id;
   private String fileName;
   private List<String> contentHighlights;
   private List<String> titleHighlights;
